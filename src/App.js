@@ -11,13 +11,16 @@ import {
 } from "@react-three/drei";
 import { Floor } from "./components/Floor";
 import Lights from "./components/Lights";
-import { Suspense, useEffect, useLayoutEffect, useMemo, useState } from "react";
+import { Suspense, useContext, useEffect, useLayoutEffect, useMemo, useState } from "react";
 import * as THREE from "three";
 import CSM from "three-custom-shader-material/vanilla";
 import { button, useControls, folder, Leva } from "leva";
 import { Copy } from "./Copy";
-
-class ToonMaterial extends CSM {
+import Model from "./RealmCity_exportTest_7";
+import { EffectComposer, DepthOfField, Bloom, Noise, Vignette, Outline, EffectComposerContext } from '@react-three/postprocessing'
+import { HatchMaterial, SobelEffect } from "./effects";
+import { wrapEffect } from "./utils";
+export class ToonMaterial extends CSM {
   constructor() {
     super({
       baseMaterial: THREE.MeshStandardMaterial,
@@ -78,17 +81,25 @@ class ToonMaterial extends CSM {
     for (let i = 0; i < 1; i++) {
       for (let j = 0; j < 256; j++) {
         let position = j / 256;
-        const stop = sorted.reduce((prev, curr) => {
-          if (curr.pos <= position && curr.pos > prev.pos) {
-            return curr;
-          }
-          return prev;
-        });
+        let stopIndex;
 
-        if (stop) {
-          color.set(stop.color);
-          arr.push(color.r * 255, color.g * 255, color.b * 255, 255);
+        for (stopIndex = 0; stopIndex < sorted.length - 1; stopIndex++) {
+          if (sorted[stopIndex].pos <= position && sorted[stopIndex + 1].pos > position) {
+            break;
+          }
         }
+
+        let lowerStop = sorted[stopIndex];
+        let upperStop = sorted[stopIndex + 1] || lowerStop;
+        let t = (position - lowerStop.pos) / (upperStop.pos - lowerStop.pos);
+
+        color.set(lowerStop.color);
+        const lowerColor = color.clone();
+        color.set(upperStop.color);
+        const upperColor = color.clone();
+
+        color.copy(lowerColor).lerp(upperColor, t);
+        arr.push(color.r * 255, color.g * 255, color.b * 255, 255);
       }
     }
 
@@ -177,26 +188,62 @@ function Thing() {
   );
 }
 
+const Sobel = wrapEffect(SobelEffect)
+
+
 export default function App() {
+
+
   return (
     <>
-      <Canvas shadows>
-        <fog attach="fog" args={[0xffffff, 10, 90]} />
+      <Canvas gl={{
+        powerPreference: "high-performance",
+        alpha: false,
+        antialias: true,
+        stencil: false,
+        depth: false
+      }} shadows>
+        <directionalLight position={[5, 5, -8]} castShadow intensity={5} shadow-mapSize={2048} shadow-bias={-0.001}>
 
-        <OrbitControls makeDefault />
-        <PerspectiveCamera fov={39.6} position={[0, 2, 10]} makeDefault />
 
-        <Suspense>
-          <Thing />
-          <Environment
-            background
-            blur={0.05}
-            files="https://dl.polyhaven.org/file/ph-assets/HDRIs/hdr/1k/table_mountain_2_puresky_1k.hdr"
-          />
-        </Suspense>
+          {/* <rectAreaLight
+          width={100}
+          height={100}
+          intensity={1000}
+          color={"#ffffff"}
+          position={[180, 180, 180]}
+          lookAt={[0, 0, 0]}
+          penumbra={2}
+          castShadow
+        /> */}
+          <fog attach="fog" args={[0xffffff, 10, 90]} />
+
+          <OrbitControls makeDefault />
+          <PerspectiveCamera fov={39.6} position={[50, 50, 10]} makeDefault />
+
+          <Suspense>
+            <Model />
+            {/* <Thing /> */}
+            <Environment
+              background
+              blur={0.05}
+              files="https://dl.polyhaven.org/file/ph-assets/HDRIs/hdr/1k/table_mountain_2_puresky_1k.hdr"
+            />
+          </Suspense>
+          <EffectComposer>
+
+            {/* <Outline visibleEdgeColor={"blue"} width={500} edgeStrength={100} /> */}
+            <DepthOfField focusDistance={0} focalLength={1} bokehScale={2} height={480} />
+            <Bloom luminanceThreshold={0.4} luminanceSmoothing={0.9} height={100} />
+            <Noise opacity={0.01} />
+            <Vignette eskil={false} offset={0.1} darkness={1.1} />
+            <Sobel />
+            {/* <Pixelation granularity={16} /> */}
+          </EffectComposer>
+        </directionalLight>
       </Canvas>
 
-      <Leva collapsed />
+      {/* <Leva collapsed /> */}
       <Copy />
     </>
   );
